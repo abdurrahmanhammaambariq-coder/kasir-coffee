@@ -217,6 +217,12 @@ h1 { margin: 0; font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em; }
   .panel { position: static; max-height: none; }
 }
 
+/* Layar login */
+.login { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.login .box { display: grid; gap: 10px; }
+.login h1 { font-size: 1.5rem; }
+.muted { color: var(--muted); margin: 0; }
+
 /* Cetak struk saja */
 @media print {
   body * { visibility: hidden; }
