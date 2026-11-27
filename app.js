@@ -144,9 +144,7 @@ function App({ role, onLogout }) {
         <h1>☕ Kopi Senja — Kasir</h1>
         <nav className="tabs">
           <button className={'tab ' + (view === 'kasir' ? 'on' : '')} onClick={() => setView('kasir')}>Kasir</button>
-          {isOwner && (
-            <button className={'tab ' + (view === 'riwayat' ? 'on' : '')} onClick={() => setView('riwayat')}>Riwayat ({trx.length})</button>
-          )}
+          <button className={'tab ' + (view === 'riwayat' ? 'on' : '')} onClick={() => setView('riwayat')}>Riwayat ({trx.length})</button>
           <button className="tab" onClick={onLogout}>Keluar ({isOwner ? 'Owner' : 'Kasir'})</button>
         </nav>
       </header>
@@ -198,7 +196,7 @@ function App({ role, onLogout }) {
         </aside>
       </>}
 
-      {view === 'riwayat' && isOwner && (
+      {view === 'riwayat' && (
         <section className="wide">
           <div className="stats">
             <div><b>{rp(omzet)}</b>Omzet hari ini</div>
@@ -220,7 +218,7 @@ function App({ role, onLogout }) {
                   ))}
                 </tbody>
               </table>}
-          {!!trx.length && (
+          {isOwner && !!trx.length && (
             <button className="btn ghost" style={{ width: 'auto', padding: '10px 16px' }} onClick={resetHistory}>
               Hapus riwayat
             </button>
