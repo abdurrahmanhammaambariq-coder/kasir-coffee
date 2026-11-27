@@ -218,7 +218,7 @@ function App({ role, onLogout }) {
                   ))}
                 </tbody>
               </table>}
-          {isOwner && !!trx.length && (
+          {!!trx.length && (
             <button className="btn ghost" style={{ width: 'auto', padding: '10px 16px' }} onClick={resetHistory}>
               Hapus riwayat
             </button>
