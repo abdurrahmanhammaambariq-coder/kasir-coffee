@@ -3,6 +3,7 @@ const { useState, useEffect } = React;
 /* ===== Pengaturan ===== */
 const TAX = 0.1;
 const rp = n => 'Rp ' + Math.round(n).toLocaleString('id-ID');
+const short = v => v >= 1e6 ? (v / 1e6).toFixed(1).replace('.0', '') + ' jt' : v >= 1000 ? Math.round(v / 1000) + ' rb' : String(Math.round(v));
 
 const MENU = [
   { id: 1,  n: 'Espresso',            c: 'Kopi',     p: 18000, e: '☕' },
@@ -86,6 +87,113 @@ function Login({ onLogin }) {
   );
 }
 
+/* ===== Diagram batang (SVG, tanpa pustaka) ===== */
+function BarChart({ data }) {
+  const W = 620, H = 240, padX = 14, top = 26, bottom = 40;
+  const max = Math.max(...data.map(d => d.value), 1);
+  const slot = (W - padX * 2) / data.length;
+  const bw = Math.min(56, slot * 0.62);
+  const ch = H - top - bottom;
+  return (
+    <svg viewBox={'0 0 ' + W + ' ' + H} className="chart" role="img" aria-label="Diagram pemasukan 7 hari terakhir">
+      <line x1={padX} x2={W - padX} y1={H - bottom} y2={H - bottom} stroke="var(--line)" />
+      {data.map((d, i) => {
+        const h = d.value ? Math.max(4, (d.value / max) * ch) : 0;
+        const x = padX + i * slot + (slot - bw) / 2;
+        const y = H - bottom - h;
+        return (
+          <g key={i}>
+            <rect x={x} y={y} width={bw} height={h} rx="6" style={{ fill: d.today ? 'var(--accent)' : 'var(--accent-soft)' }} />
+            <text x={x + bw / 2} y={y - 6} textAnchor="middle" className="ct">{d.value ? short(d.value) : ''}</text>
+            <text x={x + bw / 2} y={H - bottom + 16} textAnchor="middle" className="ct">{d.label}</text>
+            <text x={x + bw / 2} y={H - bottom + 30} textAnchor="middle" className="ct muted-t">{d.sub}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/* ===== Laporan pemasukan ===== */
+function Laporan({ trx }) {
+  const [counted, setCounted] = useState('');
+  const now = new Date();
+  const sameDay = (t, d) => new Date(t.time).toDateString() === d.toDateString();
+
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const list = trx.filter(t => sameDay(t, d));
+    days.push({
+      label: d.toLocaleDateString('id-ID', { weekday: 'short' }),
+      sub: d.getDate() + '/' + (d.getMonth() + 1),
+      value: list.reduce((s, t) => s + t.total, 0),
+      count: list.length,
+      today: i === 0
+    });
+  }
+  const todayD = days[6];
+  const week = { value: days.reduce((s, d) => s + d.value, 0), count: days.reduce((s, d) => s + d.count, 0) };
+  const monthList = trx.filter(t => { const d = new Date(t.time); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); });
+  const month = { value: monthList.reduce((s, t) => s + t.total, 0), count: monthList.length };
+  const avg = month.count ? month.value / month.count : 0;
+
+  const agg = {};
+  monthList.forEach(t => t.lines.forEach(l => {
+    agg[l.n] = agg[l.n] || { n: l.n, qt: 0, rev: 0 };
+    agg[l.n].qt += l.qt; agg[l.n].rev += l.p * l.qt;
+  }));
+  const top = Object.values(agg).sort((a, b) => b.qt - a.qt).slice(0, 5);
+  const topMax = Math.max(...top.map(t => t.qt), 1);
+
+  const expected = todayD.value;
+  const has = counted !== '';
+  const diff = Number(counted) - expected;
+
+  return (
+    <section className="wide">
+      <h2 style={{ marginTop: 0 }}>Laporan pemasukan</h2>
+      <div className="cards">
+        <div className="card"><span>Hari ini</span><b>{rp(todayD.value)}</b><small>{todayD.count} transaksi</small></div>
+        <div className="card"><span>7 hari terakhir</span><b>{rp(week.value)}</b><small>{week.count} transaksi</small></div>
+        <div className="card"><span>Bulan ini</span><b>{rp(month.value)}</b><small>{month.count} transaksi</small></div>
+        <div className="card"><span>Rata-rata per transaksi</span><b>{rp(avg)}</b><small>bulan ini</small></div>
+      </div>
+
+      <h3>Pemasukan 7 hari terakhir</h3>
+      {week.value === 0 ? <p className="empty">Belum ada pemasukan tercatat. Selesaikan pembayaran di tab Kasir dan grafiknya akan muncul.</p> : <BarChart data={days} />}
+
+      <h3>Menu terlaris bulan ini</h3>
+      {!top.length ? <p className="empty">Belum ada data menu.</p> :
+        <div className="toplist">
+          {top.map(t => (
+            <div className="toprow" key={t.n}>
+              <span>{t.n}</span>
+              <div className="track"><div className="fill" style={{ width: (t.qt / topMax * 100) + '%' }} /></div>
+              <span>{t.qt} terjual · {rp(t.rev)}</span>
+            </div>
+          ))}
+        </div>}
+
+      <h3>Cocokkan kas hari ini</h3>
+      <p className="muted">Hitung uang tunai di laci, lalu masukkan jumlahnya. Aplikasi membandingkannya dengan total pembayaran yang tercatat hari ini.</p>
+      <div className="cash">
+        <div>Tercatat di aplikasi: <b>{rp(expected)}</b></div>
+        <input type="number" inputMode="numeric" placeholder="Uang tunai di laci" value={counted}
+               onChange={e => setCounted(e.target.value)} aria-label="Uang tunai di laci" />
+        {has && (
+          <div className={'diff ' + (diff === 0 ? 'ok' : 'bad')}>
+            {diff === 0 && 'Cocok. Uang di laci sama dengan yang tercatat.'}
+            {diff > 0 && 'Lebih ' + rp(diff) + ' dari catatan. Cek apakah ada modal awal, tip, atau transaksi yang tidak dicatat.'}
+            {diff < 0 && 'Kurang ' + rp(-diff) + ' dari catatan. Cek lagi kembalian, pengeluaran, atau transaksi yang salah input.'}
+          </div>
+        )}
+      </div>
+      <p className="muted" style={{ marginTop: 14 }}>Angka di laporan ini berasal dari transaksi yang dicatat kasir di perangkat ini. Aplikasi belum terhubung ke rekening bank atau QRIS, jadi belum bisa memastikan uang non-tunai benar-benar masuk.</p>
+    </section>
+  );
+}
+
 /* ===== Aplikasi kasir ===== */
 function App({ role, onLogout }) {
   const isOwner = role === 'owner';
@@ -130,7 +238,7 @@ function App({ role, onLogout }) {
   }
 
   function resetHistory() {
-        if (window.confirm('Hapus semua riwayat transaksi?')) { setTrx([]); save([]); }
+    if (window.confirm('Hapus semua riwayat transaksi?')) { setTrx([]); save([]); }
   }
 
   const today = trx.filter(t => new Date(t.time).toDateString() === new Date().toDateString());
@@ -145,6 +253,9 @@ function App({ role, onLogout }) {
         <nav className="tabs">
           <button className={'tab ' + (view === 'kasir' ? 'on' : '')} onClick={() => setView('kasir')}>Kasir</button>
           <button className={'tab ' + (view === 'riwayat' ? 'on' : '')} onClick={() => setView('riwayat')}>Riwayat ({trx.length})</button>
+          {isOwner && (
+            <button className={'tab ' + (view === 'laporan' ? 'on' : '')} onClick={() => setView('laporan')}>Laporan</button>
+          )}
           <button className="tab" onClick={onLogout}>Keluar ({isOwner ? 'Owner' : 'Kasir'})</button>
         </nav>
       </header>
@@ -225,6 +336,8 @@ function App({ role, onLogout }) {
           )}
         </section>
       )}
+
+      {view === 'laporan' && isOwner && <Laporan trx={trx} />}
 
       {pay && (
         <div className="modal" role="dialog" aria-modal="true">
