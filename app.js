@@ -130,7 +130,7 @@ function App({ role, onLogout }) {
   }
 
   function resetHistory() {
-    if (isOwner && window.confirm('Hapus semua riwayat transaksi?')) { setTrx([]); save([]); }
+        if (window.confirm('Hapus semua riwayat transaksi?')) { setTrx([]); save([]); }
   }
 
   const today = trx.filter(t => new Date(t.time).toDateString() === new Date().toDateString());
