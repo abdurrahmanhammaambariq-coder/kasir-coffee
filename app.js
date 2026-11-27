@@ -1,7 +1,7 @@
 const { useState, useEffect } = React;
 
-/* ===== Pengaturan (silakan ubah) ===== */
-const TAX = 0.1; // pajak 10%, isi 0 jika tanpa pajak
+/* ===== Pengaturan ===== */
+const TAX = 0.1;
 const rp = n => 'Rp ' + Math.round(n).toLocaleString('id-ID');
 
 const MENU = [
@@ -20,18 +20,75 @@ const MENU = [
 ];
 const CATS = ['Semua', 'Kopi', 'Non-Kopi', 'Makanan'];
 
-/* ===== Penyimpanan riwayat di browser ===== */
+/* ===== Penyimpanan riwayat ===== */
 function load() {
-  try { return JSON.parse(localStorage.getItem('kasir_trx') || '[]'); }
-  catch (e) { return []; }
+  try { return JSON.parse(localStorage.getItem('kasir_trx') || '[]'); } catch (e) { return []; }
 }
 function save(v) {
-  try { localStorage.setItem('kasir_trx', JSON.stringify(v)); }
-  catch (e) {}
+  try { localStorage.setItem('kasir_trx', JSON.stringify(v)); } catch (e) {}
 }
 
-/* ===== Komponen utama ===== */
-function App() {
+/* ===== Sesi login ===== */
+const AUTH_KEY = 'kasir_auth';
+function readAuth() {
+  try {
+    const a = JSON.parse(sessionStorage.getItem(AUTH_KEY) || 'null');
+    if (!a || !a.token) return null;
+    const p = JSON.parse(atob(a.token.split('.')[0].replace(/-/g, '+').replace(/_/g, '/')));
+    if (!p.exp || p.exp < Date.now()) return null;
+    return { token: a.token, role: p.role };
+  } catch (e) { return null; }
+}
+
+function Login({ onLogin }) {
+  const [role, setRole] = useState('kasir');
+  const [secret, setSecret] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    setErr(''); setBusy(true);
+    try {
+      const res = await fetch('/.netlify/functions/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role, secret })
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error || 'Login gagal. Coba lagi.'); }
+      else {
+        try { sessionStorage.setItem(AUTH_KEY, JSON.stringify({ token: data.token })); } catch (e) {}
+        onLogin({ token: data.token, role: data.role });
+      }
+    } catch (e) {
+      setErr('Server login tidak bisa dihubungi. Pastikan situs dibuka dari alamat Netlify.');
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="login">
+      <form className="box" onSubmit={submit}>
+        <h1>☕ Kopi Senja</h1>
+        <p className="muted">Masuk untuk memakai kasir.</p>
+        <div className="tabs" style={{ marginBottom: 10 }}>
+          <button type="button" className={'tab ' + (role === 'kasir' ? 'on' : '')} onClick={() => setRole('kasir')}>Kasir</button>
+          <button type="button" className={'tab ' + (role === 'owner' ? 'on' : '')} onClick={() => setRole('owner')}>Owner</button>
+        </div>
+        <input type="password" autoFocus value={secret} onChange={e => setSecret(e.target.value)}
+               placeholder={role === 'owner' ? 'Password owner' : 'PIN kasir'}
+               aria-label={role === 'owner' ? 'Password owner' : 'PIN kasir'} />
+        {err && <p className="err">{err}</p>}
+        <button className="btn" disabled={busy || !secret}>{busy ? 'Memeriksa...' : 'Masuk'}</button>
+      </form>
+    </div>
+  );
+}
+
+/* ===== Aplikasi kasir ===== */
+function App({ role, onLogout }) {
+  const isOwner = role === 'owner';
   const [view, setView] = useState('kasir');
   const [cat, setCat] = useState('Semua');
   const [q, setQ] = useState('');
@@ -60,10 +117,7 @@ function App() {
 
   function confirmPay() {
     const amt = Number(paid);
-    if (!amt || amt < total) {
-      setErr('Uang diterima kurang dari total. Cek lagi nominalnya.');
-      return;
-    }
+    if (!amt || amt < total) { setErr('Uang diterima kurang dari total. Cek lagi nominalnya.'); return; }
     const r = {
       no: 'TRX-' + String(trx.length + 1).padStart(4, '0'),
       time: new Date().toISOString(),
@@ -76,7 +130,7 @@ function App() {
   }
 
   function resetHistory() {
-    if (window.confirm('Hapus semua riwayat transaksi?')) { setTrx([]); save([]); }
+    if (isOwner && window.confirm('Hapus semua riwayat transaksi?')) { setTrx([]); save([]); }
   }
 
   const today = trx.filter(t => new Date(t.time).toDateString() === new Date().toDateString());
@@ -90,7 +144,10 @@ function App() {
         <h1>☕ Kopi Senja — Kasir</h1>
         <nav className="tabs">
           <button className={'tab ' + (view === 'kasir' ? 'on' : '')} onClick={() => setView('kasir')}>Kasir</button>
-          <button className={'tab ' + (view === 'riwayat' ? 'on' : '')} onClick={() => setView('riwayat')}>Riwayat ({trx.length})</button>
+          {isOwner && (
+            <button className={'tab ' + (view === 'riwayat' ? 'on' : '')} onClick={() => setView('riwayat')}>Riwayat ({trx.length})</button>
+          )}
+          <button className="tab" onClick={onLogout}>Keluar ({isOwner ? 'Owner' : 'Kasir'})</button>
         </nav>
       </header>
 
@@ -141,7 +198,7 @@ function App() {
         </aside>
       </>}
 
-      {view === 'riwayat' && (
+      {view === 'riwayat' && isOwner && (
         <section className="wide">
           <div className="stats">
             <div><b>{rp(omzet)}</b>Omzet hari ini</div>
@@ -217,4 +274,15 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+/* ===== Pintu masuk ===== */
+function Root() {
+  const [auth, setAuth] = useState(readAuth());
+  function logout() {
+    try { sessionStorage.removeItem(AUTH_KEY); } catch (e) {}
+    setAuth(null);
+  }
+  if (!auth) return <Login onLogin={setAuth} />;
+  return <App role={auth.role} onLogout={logout} />;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
